@@ -1,25 +1,48 @@
-import { getFlightByNumber } from '@/utils/aviationStack';
-import { Flight } from '@/utils/types';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchFlights, formatFlightData } from '@/utils/aviationStack';
 
-export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const query = searchParams.get('query');
+export async function GET(request: NextRequest): Promise<NextResponse> {
+    try {
+        const searchParams = request.nextUrl.searchParams;
 
-    if (!query) {
-        return NextResponse.json([]);
+        const departure = searchParams.get('departure') || undefined;
+        const arrival = searchParams.get('arrival') || undefined;
+        const date = searchParams.get('date') || undefined;
+        const flightIata = searchParams.get('flightIata') || undefined;
+
+        // Validate search parameters
+        if (!departure && !arrival && !date && !flightIata) {
+            return NextResponse.json(
+                { error: 'At least one search parameter is required' },
+                { status: 400 }
+            );
+        }
+
+        // Fetch flights from AviationStack API
+        const rawFlights = await fetchFlights({
+            departure,
+            arrival,
+            date,
+            flightIata,
+            limit: 20,
+        });
+
+        // Format the flights for display
+        const formattedFlights = rawFlights.map(formatFlightData);
+
+        return NextResponse.json({
+            success: true,
+            flights: formattedFlights,
+            count: formattedFlights.length,
+        });
+    } catch (error) {
+        console.error('API Error:', error);
+
+        return NextResponse.json(
+            {
+                error: error instanceof Error ? error.message : 'Failed to fetch flights',
+            },
+            { status: 500 }
+        );
     }
-
-    const flight = await getFlightByNumber(query);
-
-    if (!flight) {
-        return NextResponse.json({ error: 'Flight not found' }, { status: 404 });
-    }
-
-    // Return as an array to match the expected format of the frontend for now, 
-    // or we can update frontend to expect a single object. 
-    // The previous mock data returned an array of matches.
-    // The API utility returns a single Flight object (the first match).
-    // Let's return an array containing the single flight.
-    return NextResponse.json([flight]);
 }
